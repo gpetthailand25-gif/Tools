@@ -667,7 +667,7 @@ function reqBlock(l){
   if(l.requestNote)d+='<dt>หมายเหตุคำขอ</dt><dd>'+esc(l.requestNote)+'</dd>';
   if(l.approveNote)d+='<dt>หมายเหตุอนุมัติ</dt><dd>'+esc(l.approveNote)+'</dd>';
   d+='<dt>จำนวน</dt><dd>'+(l.items||[]).length+' รายการ</dd></dl>';
-  if(!picked(l))d+='<ul class="res">'+(l.items||[]).map(function(it){var mt=itemMeta(it);return '<li class="ok">'+ic('box')+'<span>'+esc(it.n)+(mt?'<small class="meta">'+esc(mt)+'</small>':'')+'</span></li>'}).join('')+'</ul>';
+  if(!picked(l))d+='<ul class="res">'+(l.items||[]).map(function(it){var mt=itemMeta(it);var ph=itemPh(l,it);return '<li class="ok" style="align-items:center">'+(ph?thumb(ph,true):ic('box'))+'<span>'+esc(it.n)+(mt?'<small class="meta">'+esc(mt)+'</small>':'')+'</span></li>'}).join('')+'</ul>';
   return '<section class="col"><h3>คำขอยืม / การอนุมัติ</h3>'+d+'</section>';
 }
 function detailHTML(f){
