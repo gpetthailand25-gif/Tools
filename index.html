@@ -300,6 +300,32 @@ async function seedKits(){
     toast('นำเข้า '+miss.length+' กล่องตามแบบฟอร์มแล้ว');
   }catch(e){toast('นำเข้าไม่สำเร็จ ลองอีกครั้ง')}
 }
+var SHA_K=(function(){var k=[],p=[],c=2;while(k.length<64){var ok=true;for(var i=0;i<p.length;i++){if(c%p[i]===0){ok=false;break}}if(ok){p.push(c);k.push(Math.floor((Math.cbrt(c)%1)*4294967296))}c++}return k})();
+function sha256hex(str){
+  var b=unescape(encodeURIComponent(str)),n=b.length,w=[],i;
+  for(i=0;i<n;i++)w[i>>2]|=b.charCodeAt(i)<<(24-(i%4)*8);
+  w[n>>2]|=0x80<<(24-(n%4)*8);
+  var L=(((n+8)>>6)+1)*16;
+  for(i=0;i<L;i++)if(w[i]===undefined)w[i]=0;
+  w[L-1]=n*8;
+  var H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  function R(x,c){return (x>>>c)|(x<<(32-c))}
+  for(var o=0;o<L;o+=16){
+    var W=w.slice(o,o+16),a=H.slice();
+    for(i=16;i<64;i++){var s0=R(W[i-15],7)^R(W[i-15],18)^(W[i-15]>>>3),s1=R(W[i-2],17)^R(W[i-2],19)^(W[i-2]>>>10);W[i]=(W[i-16]+s0+W[i-7]+s1)|0}
+    for(i=0;i<64;i++){
+      var S1=R(a[4],6)^R(a[4],11)^R(a[4],25),ch=(a[4]&a[5])^(~a[4]&a[6]),t1=(a[7]+S1+ch+SHA_K[i]+W[i])|0,
+          S0=R(a[0],2)^R(a[0],13)^R(a[0],22),mj=(a[0]&a[1])^(a[0]&a[2])^(a[1]&a[2]),t2=(S0+mj)|0;
+      a=[(t1+t2)|0,a[0],a[1],a[2],(a[3]+t1)|0,a[4],a[5],a[6]];
+    }
+    for(i=0;i<8;i++)H[i]=(H[i]+a[i])|0;
+  }
+  return H.map(function(x){return ('00000000'+(x>>>0).toString(16)).slice(-8)}).join('');
+}
+function hashPin(mid,pin,salt){return 'h1:'+sha256hex(salt+':'+mid+':'+pin)}
+function sessGet(){try{return sessionStorage.getItem('tool-sess')}catch(e){return null}}
+function sessSet(v){try{if(v)sessionStorage.setItem('tool-sess',v);else sessionStorage.removeItem('tool-sess')}catch(e){}}
+var LOCK={};
 function lines(t){return String(t||'').split(/\r?\n/).map(function(s){return s.trim()}).filter(Boolean)}
 function pSrc(p){return (p.id?S.pc[p.id]:p.d)||''}
 function ensurePhotos(l){
@@ -329,6 +355,7 @@ function render(){
 }
 function banners(){
   var b='';
+  if(S.diag&&!(S.ld.k&&S.ld.m&&S.ld.l))b+='<div class="banner bad">'+esc(S.diag)+'</div>';
   if(S.volatile)b+='<div class="banner bad">เบราว์เซอร์นี้เก็บข้อมูลถาวรไม่ได้ (อาจเป็นโหมดส่วนตัว) ข้อมูลจะหายเมื่อปิดหน้านี้</div>';
   if(S.nodb)b+='<div class="banner bad">เปิดที่เก็บข้อมูลในเบราว์เซอร์ไม่ได้ ลองใช้ Chrome, Safari หรือ Edge รุ่นล่าสุด</div>';
   else if(S.err)b+='<div class="banner bad">โหลดข้อมูลไม่สำเร็จ ('+esc(S.err)+') ลองรีเฟรชหน้านี้</div>';
@@ -338,7 +365,7 @@ function banners(){
 }
 function view(){
   if(S.nodb)return '';
-  if(!(S.ld.k&&S.ld.m&&S.ld.l))return '<div class="empty"><b>กำลังโหลดข้อมูล…</b></div>';
+  if(!(S.ld.k&&S.ld.m&&S.ld.l))return '<div class="empty"><b>กำลังโหลดข้อมูล…</b>'+(S.slow?'<span>ใช้เวลานานผิดปกติ ดูข้อความสีแดงด้านบน</span>':'')+'</div>';
   if(S.tab==='out')return outView();
   if(S.tab==='hist')return histView();
   if(S.tab==='manage')return manageView();
@@ -406,7 +433,7 @@ function manageView(){
   var ms='';
   if(isHead()){
     ms='<section class="sect"><div class="sect-h"><h2>ทีมงาน ('+S.members.length+')</h2><button class="btn sm pri" data-act="mem-new">'+ic('plus')+'เพิ่มคน</button></div>'
-     +(S.members.length?'<div class="list">'+S.members.map(function(m){return '<div class="row"><div class="l"><b>'+esc(m.name)+'</b></div><div class="r"><span class="pill role">'+(ROLE[m.role]||'')+'</span><button class="btn sm" data-act="mem-edit" data-id="'+m.id+'">แก้ไข</button></div></div>'}).join('')+'</div>':setupCard())+'</section>';
+     +(S.members.length?'<div class="list">'+S.members.map(function(m){return '<div class="row"><div class="l"><b>'+esc(m.name)+'</b></div><div class="r">'+(m.pw?'':'<span class="pill badp">ยังไม่ตั้งรหัส</span>')+'<span class="pill role">'+(ROLE[m.role]||'')+'</span><button class="btn sm" data-act="mem-edit" data-id="'+m.id+'">แก้ไข</button></div></div>'}).join('')+'</div>':setupCard())+'</section>';
   }
   var cloud=S.mode==='cloud';
   var bk='<section class="sect"><h2>การเชื่อมต่อ</h2><p>'+(cloud?'เชื่อมต่อ Firebase แล้ว ทุกเครื่องที่ตั้งค่าเดียวกันเห็นข้อมูลตรงกัน':'โหมดเครื่องเดียว ข้อมูลอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น')+'</p><div class="pbtns"><button class="btn" data-act="reconf">'+(cloud?'เปลี่ยนการเชื่อมต่อ':'ตั้งค่า Firebase')+'</button></div></section>'
@@ -434,6 +461,7 @@ function renderSheet(){
   if(nb&&old)nb.scrollTop=st;
   if(aid){var el=document.getElementById(aid);if(el){el.focus({preventScroll:true});if(ss&&el.setSelectionRange){try{el.setSelectionRange(ss[0],ss[1])}catch(e){}}}}
   else if(!old){var d=host.querySelector('.sheet');if(d)d.focus({preventScroll:true})}
+  if(!aid&&f.type==='who'&&f.step==='pin'){var pi=document.getElementById('pin-in');if(pi)pi.focus({preventScroll:true})}
   document.body.style.overflow='hidden';
 }
 function sheetHTML(f){
@@ -445,8 +473,19 @@ function sheetHTML(f){
   return '';
 }
 function whoHTML(f){
-  var b=S.members.length?'<div class="list">'+S.members.map(function(m){return '<button class="who-b '+(S.me&&S.me.id===m.id?'on':'')+'" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b><span class="pill role">'+(ROLE[m.role]||'')+'</span></button>'}).join('')+'</div>':'<p class="muted">ยังไม่มีรายชื่อทีม ให้หัวหน้าเพิ่มในแท็บจัดการ</p>';
-  return shell(f,'คุณคือใคร?','<p class="muted">เลือกชื่อของคุณ ระบบจะบันทึกชื่อนี้ในรายการยืมและคืน</p>'+b,'');
+  var m=f.step==='pin'?S.members.find(function(x){return x.id===f.mid}):null;
+  if(f.step==='pin'&&m){
+    var setup=f.mode==='setup';
+    var body='<p class="muted">'+(setup?'ครั้งแรก ตั้งรหัสของ <b>'+esc(m.name)+'</b> (ตัวเลข 4-6 หลัก) หลังจากนี้มีเพียงหัวหน้าที่เปลี่ยนรหัสได้':'ใส่รหัสของ <b>'+esc(m.name)+'</b>')+'</p>'
+     +'<div class="fld"><label for="pin-in">รหัส</label><input id="pin-in" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="'+(setup?'new-password':'current-password')+'" maxlength="6" data-bind="pin" data-enter="pinok" value="'+esc(f.form.pin)+'"></div>'
+     +(setup?'<div class="fld"><label for="pin-in2">ยืนยันรหัสอีกครั้ง</label><input id="pin-in2" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="6" data-bind="pin2" data-enter="pinok" value="'+esc(f.form.pin2)+'"></div>':'')
+     +(f.err?'<p class="note err">'+esc(f.err)+'</p>':'');
+    var foot='<button class="btn" data-act="pinback"'+(f.busy?' disabled':'')+'>กลับ</button><button class="btn pri" data-act="pinok"'+(f.busy?' disabled':'')+'>'+(setup?'ตั้งรหัสและเข้าใช้งาน':'เข้าสู่ระบบ')+'</button>';
+    return shell(f,setup?'ตั้งรหัสครั้งแรก':'ใส่รหัส',body,foot);
+  }
+  var b=S.members.length?'<div class="list">'+S.members.map(function(x){return '<button class="who-b '+(S.me&&S.me.id===x.id?'on':'')+'" data-act="pick" data-id="'+x.id+'"><b>'+esc(x.name)+'</b>'+(x.pw?'':'<span class="pill badp">ยังไม่มีรหัส</span>')+'<span class="pill role">'+(ROLE[x.role]||'')+'</span></button>'}).join('')+'</div>':'<p class="muted">ยังไม่มีรายชื่อทีม ให้หัวหน้าเพิ่มในแท็บจัดการ</p>';
+  var foot2=S.me?'<button class="btn" data-act="logout">ออกจากระบบ</button>':'';
+  return shell(f,'เข้าสู่ระบบ','<p class="muted">เลือกชื่อของคุณ แล้วใส่รหัส ระบบจะบันทึกชื่อนี้ในรายการยืมและคืน</p>'+(f.err?'<p class="note err">'+esc(f.err)+'</p>':'')+b,foot2);
 }
 function flowHTML(f){
   var n=f.items.length,c=f.items.filter(function(i){return f.checks[i.id]}).length,ret=f.mode==='return',L=f.loan;
@@ -506,9 +545,10 @@ function kitFormHTML(f){
   return shell(f,f.id?'แก้ไขกล่องอุปกรณ์':'เพิ่มกล่องอุปกรณ์',body,foot);
 }
 function memFormHTML(f){
-  var m=f.form;
+  var m=f.form,cur=f.id?S.members.find(function(x){return x.id===f.id}):null,hasPw=!!(cur&&cur.pw);
   var body='<div class="fld"><label for="m-name">ชื่อ</label><input id="m-name" type="text" data-bind="name" value="'+esc(m.name)+'" placeholder="ชื่อเล่นหรือชื่อจริง"></div>'
-   +'<div class="fld"><label for="m-role">ตำแหน่ง</label><select id="m-role" data-bind="role">'+['head','deputy','staff'].map(function(r){return '<option value="'+r+'"'+(m.role===r?' selected':'')+'>'+ROLE[r]+'</option>'}).join('')+'</select></div>';
+   +'<div class="fld"><label for="m-role">ตำแหน่ง</label><select id="m-role" data-bind="role">'+['head','deputy','staff'].map(function(r){return '<option value="'+r+'"'+(m.role===r?' selected':'')+'>'+ROLE[r]+'</option>'}).join('')+'</select></div>'
+   +(isHead()?'<div class="fld"><label for="m-pin">'+(hasPw?'ตั้งรหัสใหม่ (เว้นว่างถ้าไม่เปลี่ยน)':'ตั้งรหัส')+' · ตัวเลข 4-6 หลัก</label><input id="m-pin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="6" data-bind="pin" value="'+esc(m.pin)+'"><p class="hint">สถานะ: '+(hasPw?'ตั้งรหัสแล้ว':'ยังไม่ได้ตั้งรหัส (เข้าใช้งานไม่ได้จนกว่าจะตั้ง)')+' · บอกรหัสให้พนักงานเอง</p></div>':'');
   var foot=(f.err?'<span class="note err">'+esc(f.err)+'</span>':'')
    +(f.id?'<button class="btn bad" data-act="mem-del">'+(f.confirmDel?'ยืนยันลบ':'ลบ')+'</button>':'')
    +'<button class="btn" data-act="close">ยกเลิก</button><button class="btn pri" data-act="mem-save"'+(f.busy?' disabled':'')+'>'+(f.busy?'กำลังบันทึก…':'บันทึก')+'</button>';
@@ -543,7 +583,27 @@ async function prepPhoto(p,file,f){
 }
 
 /* ---------- actions ---------- */
-function openWho(forced){S.sheet={type:'who',forced:!!forced};renderSheet()}
+async function doPin(){
+  var f=S.sheet;if(!f||f.type!=='who'||f.busy||!S.db)return;
+  var m=S.members.find(function(x){return x.id===f.mid});if(!m)return;
+  var pin=String(f.form.pin||'');
+  if(!/^\d{4,6}$/.test(pin)){f.err='รหัสต้องเป็นตัวเลข 4-6 หลัก';renderSheet();return}
+  if(f.mode==='setup'){
+    if(pin!==String(f.form.pin2||'')){f.err='รหัสสองช่องไม่ตรงกัน';renderSheet();return}
+    f.busy=true;f.err=null;renderSheet();
+    try{var salt=uid();await S.db.doc('members/'+m.id).update({pw:hashPin(m.id,pin,salt),salt:salt});loginOk(m)}
+    catch(e){f.busy=false;f.err='บันทึกรหัสไม่สำเร็จ ลองอีกครั้ง';renderSheet()}
+    return;
+  }
+  var lk=LOCK[m.id];
+  if(lk&&lk.until>Date.now()){f.err='ใส่รหัสผิดหลายครั้ง รออีก '+Math.ceil((lk.until-Date.now())/1000)+' วินาที';renderSheet();return}
+  if(hashPin(m.id,pin,m.salt||'')===m.pw){delete LOCK[m.id];loginOk(m);return}
+  lk=LOCK[m.id]=lk||{n:0,until:0};lk.n++;
+  if(lk.n>=5){lk.n=0;lk.until=Date.now()+30000;f.err='ใส่ผิด 5 ครั้ง รอ 30 วินาที'}else f.err='รหัสไม่ถูกต้อง';
+  f.form.pin='';renderSheet();
+}
+function loginOk(m){sessSet(m.id);S.me=m;S.tab='kits';S.sheet=null;renderSheet();render();toast('สวัสดี '+m.name)}
+function openWho(forced){S.sheet={type:'who',forced:!!forced,step:'pick',mode:'login',mid:null,form:{pin:'',pin2:''},err:null,busy:false};renderSheet()}
 function openFlow(mode,kitId){
   if(S.ro)return;
   if(!S.me){openWho(false);toast('เลือกชื่อของคุณก่อน');return}
@@ -620,17 +680,23 @@ async function delKit(){
 }
 function openMem(id){
   var m=id?S.members.find(function(x){return x.id===id}):null;
-  S.sheet={type:'mem',id:id||null,form:{name:m?m.name:'',role:m?m.role:'staff'},busy:false,err:null,confirmDel:false};
+  S.sheet={type:'mem',id:id||null,form:{name:m?m.name:'',role:m?m.role:'staff',pin:''},busy:false,err:null,confirmDel:false};
   renderSheet();
 }
 async function saveMem(){
   var f=S.sheet;if(!f||f.busy||!S.db)return;
   var name=String(f.form.name||'').trim();
   if(!name){f.err='ใส่ชื่อ';renderSheet();return}
+  var np=String(f.form.pin||'');
+  if(np&&!/^\d{4,6}$/.test(np)){f.err='รหัสต้องเป็นตัวเลข 4-6 หลัก';renderSheet();return}
+  if(np&&!isHead()){f.err='เฉพาะหัวหน้าที่ตั้งรหัสได้';renderSheet();return}
   var old=f.id?S.members.find(function(x){return x.id===f.id}):null,order=old&&old.order!=null?old.order:(S.members.reduce(function(a,m){return Math.max(a,m.order||0)},0)+1);
   f.busy=true;f.err=null;renderSheet();
   try{
-    await S.db.doc('members/'+(f.id||('m'+uid()))).set({name:name,role:f.form.role,order:order});
+    var mid=f.id||('m'+uid()),obj={name:name,role:f.form.role,order:order};
+    if(old&&old.pw){obj.pw=old.pw;obj.salt=old.salt}
+    if(np){var salt=uid();obj.pw=hashPin(mid,np,salt);obj.salt=salt}
+    await S.db.doc('members/'+mid).set(obj);
     S.sheet=null;renderSheet();toast('บันทึกแล้ว');
   }catch(e){f.busy=false;f.err='บันทึกไม่สำเร็จ ลองอีกครั้ง';renderSheet()}
 }
@@ -664,7 +730,17 @@ document.addEventListener('click',function(e){
   else if(a==='kf'){S.kf=d.k;render()}
   else if(a==='more'){S.hmore+=60;render()}
   else if(a==='who')openWho(false);
-  else if(a==='pick'){lsSet('tool-me',d.id);S.me=S.members.find(function(m){return m.id===d.id})||null;S.sheet=null;renderSheet();render();if(S.me)toast('สวัสดี '+S.me.name)}
+  else if(a==='pick'&&S.sheet&&S.sheet.type==='who'){
+    var pm=S.members.find(function(m){return m.id===d.id}),pf=S.sheet;if(!pm)return;
+    pf.err=null;pf.form={pin:'',pin2:''};pf.mid=pm.id;
+    if(pm.pw){pf.step='pin';pf.mode='login'}
+    else if(pm.role==='head'){pf.step='pin';pf.mode='setup'}
+    else pf.err='ยังไม่มีรหัสของ '+pm.name+' ให้หัวหน้าตั้งรหัสให้ก่อน';
+    renderSheet();
+  }
+  else if(a==='pinback'&&S.sheet){S.sheet.step='pick';S.sheet.err=null;S.sheet.form={pin:'',pin2:''};renderSheet()}
+  else if(a==='pinok')doPin();
+  else if(a==='logout'){sessSet(null);S.me=null;S.tab='kits';S.sheet=null;render();openWho(true)}
   else if(a==='borrow'){openFlow('borrow',d.k)}
   else if(a==='ret'){if(S.sheet&&S.sheet.type==='detail'){S.sheet=null}openFlow('return',d.k)}
   else if(a==='close')closeSheet();
@@ -706,12 +782,13 @@ document.addEventListener('change',function(e){
   else if(t.dataset.photo!=null){var fl=Array.prototype.slice.call(t.files||[]);t.value='';addPhotos(fl)}
 });
 document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&e.target&&e.target.dataset&&e.target.dataset.enter==='pinok'){e.preventDefault();doPin();return}
   if(e.key==='Escape'){if($('#lb').innerHTML){$('#lb').innerHTML=''}else if(S.sheet&&!S.sheet.forced)closeSheet()}
 });
 
 /* ---------- data ---------- */
 function onData(){
-  S.me=S.members.find(function(m){return m.id===lsGet('tool-me')})||null;
+  S.me=S.members.find(function(m){return m.id===sessGet()})||null;
   render();
   if(S.sheet&&S.sheet.type==='who')renderSheet();
   if(S.ld.m&&S.members.length&&!S.me&&!S.sheet)openWho(true);
@@ -825,8 +902,8 @@ async function importBackup(file){
 
 /* ---------- connection: Firebase Firestore or single-device mode ---------- */
 var CFG_KEY='tool-fb-cfg',MODE_KEY='tool-mode';
-var FIREBASE_CONFIG={apiKey:"AIzaSyCADD_Q7jPYws5q4DYaWtWbZbyfp7tpVvk",authDomain:"tools-5adbb.firebaseapp.com",projectId:"tools-5adbb",storageBucket:"tools-5adbb.firebasestorage.app",messagingSenderId:"836913494447",appId:"1:836913494447:web:1c3318acf84781c08f575a"}; /* ตั้งค่าไว้แล้ว พนักงานเปิดไฟล์ใช้ได้เลย */
-var RULES="rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}";
+var FIREBASE_CONFIG={apiKey:"AIzaSyBxEa_yKLTzGz-ICV_bsZDVU1NHx8MiOTg",authDomain:"po-innova.firebaseapp.com",projectId:"po-innova",storageBucket:"po-innova.firebasestorage.app",messagingSenderId:"847160966036",appId:"1:847160966036:web:1688cf337d184c6c9bed81"}; /* ตั้งค่าไว้แล้ว พนักงานเปิดไฟล์ใช้ได้เลย */
+var RULES="rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{col}/{doc=**} {\n      allow read, write: if col.matches('toolloan_.*');\n    }\n  }\n}";
 function parseCfg(t){
   var o={};
   ['apiKey','authDomain','projectId','storageBucket','messagingSenderId','appId'].forEach(function(k){
@@ -838,12 +915,15 @@ function fbMsg(e){
   var c=e&&e.code;
   if(c==='nofb')return 'โหลด Firebase ไม่ได้ ตรวจอินเทอร์เน็ตแล้วเปิดไฟล์ใหม่';
   if(c==='permission-denied'||c==='failed-precondition')return 'Firebase ไม่อนุญาต ตรวจว่าสร้าง Firestore Database แล้ว และวาง Rules ตามข้อ 3 แล้วกด Publish';
-  if(c==='timeout'||c==='unavailable')return 'เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ต และตรวจ projectId กับ apiKey ว่าตรงกับโปรเจกต์';
+  if(c==='timeout'||c==='unavailable')return 'เชื่อม Firestore ไม่ได้ สาเหตุที่พบบ่อยคือยังไม่ได้สร้าง Firestore Database (Firebase Console > Build > Firestore Database > Create database) หรืออินเทอร์เน็ต/เครือข่ายบล็อก Google';
   return 'เชื่อมต่อไม่สำเร็จ ('+(c||'error')+') ตรวจค่า config อีกครั้ง';
 }
+function prefixed(db){var P='toolloan_';return {collection:function(c){return db.collection(P+c)},doc:function(p){return db.doc(P+p)}}}
 function fbDB(cfg){
   if(!window.firebase)throw {code:'nofb'};
-  return firebase.initializeApp(cfg,'app'+Date.now()).firestore();
+  var db=firebase.initializeApp(cfg,'app'+Date.now()).firestore();
+  try{db.settings({experimentalAutoDetectLongPolling:true})}catch(e){}
+  return db;
 }
 function setupHTML(){
   return '<div class="wrap" style="max-width:760px"><header class="top"><div class="brand"><span class="mark">'+ic('wrench')+'</span><div><b>ยืมอุปกรณ์ช่าง</b><small>ตั้งค่าที่เก็บข้อมูลกลาง</small></div></div></header>'
@@ -851,7 +931,7 @@ function setupHTML(){
    +'<div class="card"><h1>เชื่อม Firebase</h1><p class="muted">ทำครั้งเดียว หลังจากนั้นพนักงานทุกคนเปิดไฟล์นี้บนมือถือตัวเองแล้วเห็นข้อมูลชุดเดียวกัน (ทุกคนวาง config เดียวกันในเครื่องของตัวเอง)</p>'
    +'<ol class="steps"><li>เข้า <b>console.firebase.google.com</b> สร้างโปรเจกต์ใหม่ (ปิด Google Analytics ได้)</li>'
    +'<li>เมนู <b>Build &gt; Firestore Database</b> กด Create database เลือกโลเคชันใกล้ไทย เช่น asia-southeast1</li>'
-   +'<li>แท็บ <b>Rules</b> วางข้อความนี้แทนของเดิม แล้วกด Publish<pre>'+esc(RULES)+'</pre><p class="hint">Rules นี้ให้ทุกคนที่มี config อ่านเขียนได้ ใช้ภายในทีม อย่าเผยแพร่ไฟล์หรือ config สู่สาธารณะ</p></li>'
+   +'<li>แท็บ <b>Rules</b> วางข้อความนี้แทนของเดิม แล้วกด Publish<pre>'+esc(RULES)+'</pre><p class="hint">Rules นี้เปิดเฉพาะข้อมูลของแอพนี้ (ชื่อขึ้นต้น toolloan_) ทุกคนที่มีไฟล์อ่านเขียนได้ อย่าเผยแพร่ไฟล์สู่สาธารณะ</p></li>'
    +'<li><b>Project settings &gt; Your apps</b> กดไอคอนเว็บ (&lt;/&gt;) ลงทะเบียนแอพ แล้วคัดลอกค่า <b>firebaseConfig</b> มาวางด้านล่าง</li></ol>'
    +'<div class="fld"><label for="cfg-in">วางค่า firebaseConfig</label><textarea id="cfg-in" spellcheck="false" placeholder="const firebaseConfig = {&#10;  apiKey: &quot;...&quot;,&#10;  authDomain: &quot;...&quot;,&#10;  projectId: &quot;...&quot;,&#10;  ...&#10;};">'+esc(S.cfgText)+'</textarea></div>'
    +(S.smsg?'<p class="note err">'+esc(S.smsg)+'</p>':'')
@@ -864,7 +944,7 @@ async function doConnect(){
   if(!cfg){S.smsg='อ่านค่า config ไม่ได้ ต้องมี apiKey และ projectId ให้คัดลอกทั้งก้อนจาก Firebase';render();return}
   S.cbusy=true;S.smsg='';render();
   try{
-    var db=fbDB(cfg);
+    var db=prefixed(fbDB(cfg));
     await Promise.race([db.collection('members').get(),new Promise(function(_,rej){setTimeout(function(){rej({code:'timeout'})},12000)})]);
     lsSet(CFG_KEY,JSON.stringify(cfg));lsSet(MODE_KEY,'cloud');S.cbusy=false;attach(db,'cloud');
   }catch(e){S.cbusy=false;S.smsg=fbMsg(e);render()}
@@ -882,7 +962,7 @@ async function boot(){
   render();
   var cfg=FIREBASE_CONFIG;
   if(!cfg){try{cfg=JSON.parse(lsGet(CFG_KEY)||'null')}catch(e){}}
-  if(cfg){try{attach(fbDB(cfg),'cloud')}catch(e){S.setup=true;S.smsg=fbMsg(e);render()}return}
+  if(cfg){try{attach(prefixed(fbDB(cfg)),'cloud')}catch(e){S.setup=true;S.smsg=fbMsg(e);render()}return}
   if(lsGet(MODE_KEY)==='local'){
     var db=null;try{db=await makeLocalDB()}catch(e){}
     if(!db){S.nodb=true;render();return}
@@ -892,7 +972,13 @@ async function boot(){
 }
 function attach(db,mode){
   S.db=db;S.mode=mode;S.setup=false;S.err=null;S.ld={m:0,k:0,l:0};
-  setTimeout(function(){if(!(S.ld.k&&S.ld.m&&S.ld.l)){S.slow=true;render()}},10000);
+  setTimeout(function(){
+    if(S.ld.k&&S.ld.m&&S.ld.l)return;
+    S.slow=true;render();
+    if(mode!=='cloud')return;
+    Promise.race([db.collection('members').get({source:'server'}),new Promise(function(_,rej){setTimeout(function(){rej({code:'timeout'})},8000)})])
+      .then(function(){}).catch(function(e){if(!(S.ld.k&&S.ld.m&&S.ld.l)){S.diag=fbMsg(e);render()}});
+  },8000);
   render();
   var onErr=function(er){var c=er&&er.code;S.err=c==='permission-denied'?'Firebase ไม่อนุญาต ตรวจ Rules ของ Firestore':(c||'error');render()};
   db.collection('members').onSnapshot(function(s){
